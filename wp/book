@@ -48,6 +48,7 @@
 <html>
   
   <head>
+    <meta charset="utf-8" />
     <style>
       // Здесь будет CSS код, если понадобится
     </style>
@@ -661,3 +662,181 @@ var advertisementView = new AdvertisementView({ model: ad });
 console.log(advertisementView.render().el); // <li>Продается <strong>Mazda Atenza</strong> за <em>1600000</em> иен</li>[/js]
 
 Какой из предложенных вариантов использовать, решать вам, но и так понятно, что чем сложнее должен получаться html код в результате, тем более продвинутый вариант будет лучше подходить.
+
+<h3>Объект events</h3>
+
+Часто можно услышать, что Backbone.js - не чистый MVC фреймворк. В MVC фреймворке основополагающими являются три компонента: модели (Models), виды, или как их еще называют, представления (Views) и контроллеры (Controllers). Так вот в Backbone отдельной сущности под названием контроллеры нет. Поэтому Backbone.js часто называют MV* фреймворк. Причиной такого расхождения является то, что MVC в Javascript пришли из серверной части. В процессе миграции решено было не создавать отдельные контроллеры, а использовать существующую в Javascript систему событий и наделить полномочиями контроллеров виды. Таким образом, в Backbone.js виды выполняют также роль контроллеров из классического MVC. Осуществляется это при помощи объекта events.
+
+Вообще события это то, что вдыхает жизнь в наше приложение. И если до этого момента вы еще сомневались в целесообразности использования фреймворков подобных Backbone.js, то, уверяю вас, после этой главы все ваши сомнения улетучатся точно.
+
+Объект events является ассоциативным массивом. Он используется при расширении видов во время их создания. Как и любой ассоциативный массив он представляет из себя набор пар ключ-значение. Ключом является строка в общем виде представленная как 'событие селектор', значение - строка с названием вызываемой функции.
+
+Посмотрим работу событий на нашем примере. Но сперва нам надо его немного подправить. Создадим в html нумерованный список, в который будем вставлять наш элемент списка, добавим события в наш вид, немного подправим шаблон и модель, выкинем ненужные теперь вызовы <code>set</code> и <code>get</code>, которые мы делали вручную, посыпем сверху немного CSS, и наше блюдо готово.
+
+Советую вам сперва попробовать потыкать кнопки, повводить разные значения и посмотреть на реакцию нашего приложения, а уже потом смотреть на код, который мы сейчас разберем. Нет, я серьезно, оно того стоит.
+
+<a class="jsbin-embed" href="http://jsbin.com/iBuFALa/1/embed?output">JS Bin</a><script src="http://static.jsbin.com/js/embed.js"></script>
+
+[js highlight="21,28-30,47-49,57-58,74-82,89-106,110]<!DOCTYPE HTML>
+<html>
+  
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      .car-sold {
+        text-decoration: line-through;
+      }
+    </style>
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.5.2/underscore-min.js"></script>
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/backbone.js/1.1.0/backbone-min.js"></script>
+  </head>
+  
+  <body>
+    <!-- Здесь будут располагаться DOM элементы -->
+    <h1>Список ваших лотов</h1>
+    <ol id="ad-list"></ol>
+    
+    <script type="text/template" id="ad-template">
+      <input class="state-toggle" type="checkbox" <%= sold ? 'checked="checked"' : ''%>> Продается <strong><%= make %> <%= model %></strong> <%= year %> года выпуска с пробегом <%= odometer %> км. за <em><%= price %></em> иен <button class="edit-price">Изменить цену</button><button class="delete">Снять с торгов</button>
+    </script>
+    
+    <script>
+      // Здесь мы будем писать наш Javascript
+
+var Advertisement = Backbone.Model.extend({
+  defaults: {
+    sold: false
+  },
+  initialize: function() {
+    console.log('Создан новый экземпляр модели объявления');
+
+    this.on('change:price', function() {
+      alert('Новая цена: ' + this.get('price'));
+    });
+
+    this.on('invalid', function(model, error) {
+      alert(error);
+    });
+  },
+  validate: function(attrs) {
+    if (attrs.price <= 0) {
+      return 'Цена должна быть больше 0';
+    }
+    
+    if (isNaN(attrs.price)) {
+      return 'Цена должна быть числом';
+    }
+  },
+  getPriceInRUB: function(rate) {
+    return this.get('price') * rate;
+  },
+  getPricePerKilometerTravelled: function() {
+    return this.get('price') / this.get('odometer');
+  },
+  toggleCarSoldState: function() {
+    this.get('sold') ? this.set('sold', false) : this.set('sold', true);
+  }
+});
+
+var ad = new Advertisement({
+  make: 'Mazda',
+  model: 'Atenza',
+  year: 2007,
+  price: 1700000,
+  odometer: 70000
+}); // "Создан новый экземпляр модели объявления"
+
+var RUBJPY = 0.32; // курс рубля к иене, который мы заранее получили от сервера
+      
+var AdvertisementView = Backbone.View.extend({
+  tagName: 'li',
+  initialize: function() {
+    this.model.on('change:price', this.render, this);
+    this.model.on('destroy', this.remove, this);
+  },
+  events: {
+    'click .state-toggle': 'toggleCarSoldState',
+    'click .edit-price': 'editPrice',
+    'click .delete': 'destroy'
+  },
+  template: _.template($('#ad-template').html()),
+  render: function() {
+    this.$el.html(this.template(this.model.toJSON()));
+    
+    return this;
+  },
+  toggleCarSoldState: function() {
+    this.model.toggleCarSoldState();
+    
+    this.model.get('sold') ? this.$el.addClass('car-sold') : this.$el.removeClass('car-sold');
+  },
+  editPrice: function() {
+    var newPrice = prompt('Введите пожалуйста новую цену', this.model.get('price'));
+    
+    if (newPrice === null) return;
+    
+    this.model.set('price', +newPrice, {validate: true});
+  },
+  destroy: function() {
+    this.model.destroy();
+  },
+  remove: function() {
+    this.$el.remove();
+  }
+});
+      
+var advertisementView = new AdvertisementView({ model: ad });
+$('#ad-list').append(advertisementView.render().el);
+
+    </script>
+  </body>
+
+</html>[/js]
+
+И так, вы прочитали исходный код, и у вас наверняка возникло много вопросов. Начнем смотреть, что же у нас здесь происходит. Опустим очевидные изменения в CSS и HTML. Превое, мы поменяли шаблон. Теперь он у нас начинается с чекбокса, который отрисовывается помеченным или нет в зависимости от атрибута модели <code>sold</code>. Кстати, подумайте, зачем это нужно, если при нажатии на него он и так будет включаться и выключаться средствами браузера? Дело в том, что атрибуты модели могут быть поменяны где-то еще, и если мы перерисуем наш элемент списка, то нужно, чтобы его вид отражал текущее состояние модели. Также мы добавили две кнопки - "Изменить цену" и "Снять с торгов". Это наши элементы управления.
+
+Теперь спустимся до объекта events. Как мы уже знаем, он имеет следующую структуру.
+
+[js]'событие слектор': 'обработчик'[/js]
+
+В качестве события может быть не только <code>click</code>, а любое поддерживаемое jQuery событие, например <code>dbclick, hover, focusin, focusout, keydown</code> и т.д. Если <code>селектор</code> опущен, это значит, что мы слушаем событие на родительском элементе <code>el</code>. Теперь такая тонкость относительно селектора. Селектор всегда ищется в контексте родительского элемента <code>el</code>. Это позволяет ускорить работу приложения и не путать элементы интерфейса нашего вида с элементами других видов и прочими элементами на странице. Иначе говоря, запись выше эквивалентна следующей.
+
+[js]this.$el.find('селектор');[/js]
+
+После того как событие сработало на элементе соответствующем селектору, вид исполняет функцию, которую мы определили как <code>обработчик</code>. Рассмотрим наши обработчики поближе.
+
+<code>toggleCarSoldState</code> в AdvertisementView
+[js collapse="true"]toggleCarSoldState: function() {
+  this.model.toggleCarSoldState();
+    
+  this.model.get('sold') ? this.$el.addClass('car-sold') : this.$el.removeClass('car-sold');
+},[/js]
+
+<code>toggleCarSoldState</code> в Advertisement
+[js collapse="true"]toggleCarSoldState: function() {
+  this.get('sold') ? this.set('sold', false) : this.set('sold', true);
+}[/js]
+Обработчик <code>toggleCarSoldState</code> вызывает аналогичную функцию у модели, которая переключает атрибут <code>sold</code> между <code>true</code> и <code>false</code>. Заметьте, что мы могли бы не назначать модели отдельную функцию, а выполнять эти действия прямо в обработчике, но это было бы неправильно, так как управлять атрибутами - задача модели, а не вида. После этого в зависимости от текущего значения этого атрибута, родительскому элементу вида присваивается CSS класс, который перечеркивает наш элемент списка.
+
+<code>destroy, remove</code> в AdvertisementView
+[js collapse="true"]destroy: function() {
+  this.model.destroy();
+},
+remove: function() {
+  this.$el.remove();
+}[/js]
+
+<code>initialize</code> в AdvertisementView
+[js collapse="true"]initialize: function() {
+  this.model.on('change:price', this.render, this);
+  this.model.on('destroy', this.remove, this);
+},[/js]
+
+Думаю, что понять действия обработчика <code>editPrice</code> не составит особого труда. А вот на обработчике <code>destroy</code> стоит остановиться поподробнее. Он запускает встроенный метод модели <a href="http://backbonejs.ru/#Model-destroy"><code>destroy</code></a>, который отправляет запрос на сервер об удалении ее от туда, удалает модель из коллекций <em>(о них мы поговорим чуть позже)</em> и генерирует событие <code>destroy</code> на модели. Благодаря этому мы можем повешать обработчик на модель, который будет срабатывать при наступлении этого события. Что мы и сделали. Наш обработчик <code>remove</code> удаляет родительский элемент, тем самым удаляя элемент списка.
+
+Внимательный читатель наверняка обратил внимание, что тем обработчикам, которые мы навешивали на модель в ее конструкторе, отслеживающим изменения цены и валидацию, там не место. Ведь что они делают? Они вызывают <code>alert</code>, информирующий пользователя о произошедшем. А это относится к отображению данных, а не к самим данным. Вместо alert у нас вполне могли создаваться собственные всплывающие окна, и тогда эта мысль стала бы очевидной. Поэтому правильнее будет потом перенести их в конструктор вида.
+
+Уверен, что опытные тестировщики попробовали ввести пустую строку <code>''</code> или несколько пробелов <code>'    '</code>, на что получили отказ в виде "Цена должна быть больше 0". Однако, это не совсем правильная формулировка ошибки. По-хорошему, надо отличать пустые строки и строки с пробелами от нуля и выводить ошибку "Цена должна быть числом". Оставляю это задание вам в качестве домашнего. Уверен, что обладая теми знаниями, которые мы уже освоили, оно не вызовет у вас никаких трудностей.
+
+На этом мы заканчиваем знакомство с видами и переходим к коллекциям. Еще раз просмотрите код нашего примера и убедитесь, что у вас не осталось никаких непонятных моментов.
