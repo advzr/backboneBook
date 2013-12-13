@@ -807,20 +807,20 @@ $('#ad-list').append(advertisementView.render().el);
 После того как событие сработало на элементе соответствующем селектору, вид исполняет функцию, которую мы определили как <code>обработчик</code>. Рассмотрим наши обработчики поближе.
 
 <code>toggleCarSoldState</code> в AdvertisementView
-[js collapse="true"]toggleCarSoldState: function() {
+[js]toggleCarSoldState: function() {
   this.model.toggleCarSoldState();
     
   this.model.get('sold') ? this.$el.addClass('car-sold') : this.$el.removeClass('car-sold');
 },[/js]
 
 <code>toggleCarSoldState</code> в Advertisement
-[js collapse="true"]toggleCarSoldState: function() {
+[js]toggleCarSoldState: function() {
   this.get('sold') ? this.set('sold', false) : this.set('sold', true);
 }[/js]
 Обработчик <code>toggleCarSoldState</code> вызывает аналогичную функцию у модели, которая переключает атрибут <code>sold</code> между <code>true</code> и <code>false</code>. Заметьте, что мы могли бы не назначать модели отдельную функцию, а выполнять эти действия прямо в обработчике, но это было бы неправильно, так как управлять атрибутами - задача модели, а не вида. После этого в зависимости от текущего значения этого атрибута, родительскому элементу вида присваивается CSS класс, который перечеркивает наш элемент списка.
 
 <code>destroy, remove</code> в AdvertisementView
-[js collapse="true"]destroy: function() {
+[js]destroy: function() {
   this.model.destroy();
 },
 remove: function() {
@@ -828,15 +828,1162 @@ remove: function() {
 }[/js]
 
 <code>initialize</code> в AdvertisementView
-[js collapse="true"]initialize: function() {
+[js]initialize: function() {
   this.model.on('change:price', this.render, this);
   this.model.on('destroy', this.remove, this);
 },[/js]
 
 Думаю, что понять действия обработчика <code>editPrice</code> не составит особого труда. А вот на обработчике <code>destroy</code> стоит остановиться поподробнее. Он запускает встроенный метод модели <a href="http://backbonejs.ru/#Model-destroy"><code>destroy</code></a>, который отправляет запрос на сервер об удалении ее от туда, удалает модель из коллекций <em>(о них мы поговорим чуть позже)</em> и генерирует событие <code>destroy</code> на модели. Благодаря этому мы можем повешать обработчик на модель, который будет срабатывать при наступлении этого события. Что мы и сделали. Наш обработчик <code>remove</code> удаляет родительский элемент, тем самым удаляя элемент списка.
 
+Еще один немаловажный момент. Когда мы навешивали обработчики через <a href="http://backbonejs.ru/#Events-on"><code>on</code></a>, мы передавали третьим аргументом <code>this</code>. Таким образом мы сохраняем контекст, или по-простому, мы передаем текущую <code>this</code> в функцию, чтобы в ней она ссылалась на тот же объект, что и в момент его передачи, т.е. в нашем случае на будущий экземпляр AdvertisementView. Если бы мы этого не сделали, то внутри этих функций при их вызове в качестве обработчиков, срабатываемых при наступлении событий <code>change:price</code> и <code>destroy</code>, <code>this</code> ссылалась бы на глобальный объект <code>window</code>.
+
 Внимательный читатель наверняка обратил внимание, что тем обработчикам, которые мы навешивали на модель в ее конструкторе, отслеживающим изменения цены и валидацию, там не место. Ведь что они делают? Они вызывают <code>alert</code>, информирующий пользователя о произошедшем. А это относится к отображению данных, а не к самим данным. Вместо alert у нас вполне могли создаваться собственные всплывающие окна, и тогда эта мысль стала бы очевидной. Поэтому правильнее будет потом перенести их в конструктор вида.
 
 Уверен, что опытные тестировщики попробовали ввести пустую строку <code>''</code> или несколько пробелов <code>'    '</code>, на что получили отказ в виде "Цена должна быть больше 0". Однако, это не совсем правильная формулировка ошибки. По-хорошему, надо отличать пустые строки и строки с пробелами от нуля и выводить ошибку "Цена должна быть числом". Оставляю это задание вам в качестве домашнего. Уверен, что обладая теми знаниями, которые мы уже освоили, оно не вызовет у вас никаких трудностей.
 
+Когда закончите, можете сравнить свое решение с моим.
+[js collapse="true"]<!DOCTYPE HTML>
+<html>
+  
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      .car-sold {
+        text-decoration: line-through;
+      }
+    </style>
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.5.2/underscore-min.js"></script>
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/backbone.js/1.1.0/backbone-min.js"></script>
+  </head>
+  
+  <body>
+    <!-- Здесь будут располагаться DOM элементы -->
+    <h1>Список ваших лотов</h1>
+    <ol id="ad-list"></ol>
+    
+    <script type="text/template" id="ad-template">
+      <input class="state-toggle" type="checkbox" <%= sold ? 'checked="checked"' : ''%>> Продается <strong><%= make %> <%= model %></strong> <%= year %> года выпуска с пробегом <%= odometer %> км. за <em><%= price %></em> иен <button class="edit-price">Изменить цену</button><button class="delete">Снять с торгов</button>
+    </script>
+    
+    <script>
+      // Здесь мы будем писать наш Javascript
+
+var Advertisement = Backbone.Model.extend({
+  defaults: {
+    sold: false
+  },
+  validate: function(attrs) {
+    if (attrs.price <= 0) {
+      return 'Цена должна быть больше 0';
+    }
+    
+    if (isNaN(attrs.price)) {
+      return 'Цена должна быть числом';
+    }
+  },
+  getPriceInRUB: function(rate) {
+    return this.get('price') * rate;
+  },
+  getPricePerKilometerTravelled: function() {
+    return this.get('price') / this.get('odometer');
+  },
+  toggleCarSoldState: function() {
+    this.get('sold') ? this.set('sold', false) : this.set('sold', true);
+  }
+});
+
+var ad = new Advertisement({
+  make: 'Mazda',
+  model: 'Atenza',
+  year: 2007,
+  price: 1700000,
+  odometer: 70000
+}); // "Создан новый экземпляр модели объявления"
+
+var RUBJPY = 0.32; // курс рубля к иене, который мы заранее получили от сервера
+      
+var AdvertisementView = Backbone.View.extend({
+  tagName: 'li',
+  initialize: function() {
+    this.model.on('change:price', this.render, this);
+    this.model.on('destroy', this.remove, this);
+    this.model.on('change:price', function() {
+      alert('Новая цена: ' + this.model.get('price'));
+    }, this);
+
+    this.model.on('invalid', function(model, error) {
+      alert(error);
+    }, this);
+  },
+  events: {
+    'click .state-toggle': 'toggleCarSoldState',
+    'click .edit-price': 'editPrice',
+    'click .delete': 'destroy'
+  },
+  template: _.template($('#ad-template').html()),
+  render: function() {
+    this.$el.html(this.template(this.model.toJSON()));
+    
+    return this;
+  },
+  toggleCarSoldState: function() {
+    this.model.toggleCarSoldState();
+    
+    this.model.get('sold') ? this.$el.addClass('car-sold') : this.$el.removeClass('car-sold');
+  },
+  editPrice: function() {
+    var newPrice = prompt('Введите пожалуйста новую цену', this.model.get('price'));
+    
+    if (newPrice === null) return;
+    
+    newPrice = $.trim(newPrice);
+    if (newPrice === '') newPrice = NaN;
+    
+    this.model.set('price', +newPrice, {validate: true});
+  },
+  destroy: function() {
+    this.model.destroy();
+  },
+  remove: function() {
+    this.$el.remove();
+  }
+});
+      
+var advertisementView = new AdvertisementView({ model: ad });
+$('#ad-list').append(advertisementView.render().el);
+
+    </script>
+  </body>
+
+</html>[/js]
+
 На этом мы заканчиваем знакомство с видами и переходим к коллекциям. Еще раз просмотрите код нашего примера и убедитесь, что у вас не осталось никаких непонятных моментов.
+
+<h2>Коллекции (Collections)</h2>
+
+До сих пор мы имели дело с одним экземпляром модели, но в реальном приложении нам наверняка понадобится много экземпляров моделей. Даже в нашем надуманном примере нужно несколько объявлений, иначе какой же это список. Как нам следует поступить в этом случае? Конечно мы могли создать нужное количество экземпляров модели, потом такое же количество видов и привязать их к соответствующей модели. Однако, в таком случае наш код быстро превратится в захламленную кучу из объвлений новых экземпляров моделей и видов. Возможным решением было бы объединить все нужные нам экземпляры моделей в массив. Тогда мы могли бы их обрабатывать единым списком. Это был бы вполне годный вариант решения проблемы, но к счастью есть более удобное решение - коллекции.
+
+Коллекции в Backbone.js по сути являются массивами экземпляров моделей. Однако, помимо этого у них есть дополнительные фишки, которые делают их вне конкуренции по сравнению с обычными массивами.
+
+<h3>Создание коллекций</h3>
+
+Коллекции создаются путем расширения базовой коллекции. Чтобы связать коллекцию с моделью, при ее создании в свойстве <code>model</code> передают ссылку на модель. Применительно к нашему примеру это могло бы выглядеть так.
+
+[js]var Advertisement = Backbone.Model.extend({
+  defaults: {
+    sold: false
+  },
+  validate: function(attrs) {
+    if (attrs.price <= 0) {
+      return 'Цена должна быть больше 0';
+    }
+    
+    if (isNaN(attrs.price)) {
+      return 'Цена должна быть числом';
+    }
+  },
+  getPriceInRUB: function(rate) {
+    return this.get('price') * rate;
+  },
+  getPricePerKilometerTravelled: function() {
+    return this.get('price') / this.get('odometer');
+  },
+  toggleCarSoldState: function() {
+    this.get('sold') ? this.set('sold', false) : this.set('sold', true);
+  }
+});
+
+var AdvertisementsCollection = Backbone.Collection.extend({
+  model: Advertisement
+});[/js]
+
+Обратите внимание на разницу между тем, как мы привязывали вид к модели, и тем, как мы привязываем модель к коллекции. В первом случае мы передавали в свойстве <code>model</code> ссылку на <strong>экземпляр модели</strong> и передавали его в <strong>экземпляр вида</strong>. Во втором - мы ссылаемся на саму модель, т.е. на <strong>класс</strong>, и передаем эту ссылку в коллекцию, т.е. тоже в <strong>класс</strong>. Таким образом связь между коллецией и моделью образуется на уровне классов, а не экземпляров.
+
+<h3>Добавление и удаление экземпляров моделей из коллекций</h3>
+
+<h4>Добавление экземпляров моделей во время создания экземпляра коллекции</h4>
+
+Для этого необходимо передать новой коллекции при создании либо ссылку на существующий экземпляр модели, либо объект с параметрами для создания экземпляра модели. Следующие две записи эквивалентны.
+
+[js]var ad = new Advertisement({
+  make: 'Mazda',
+  model: 'Atenza',
+  year: 2007,
+  price: 1700000,
+  odometer: 70000
+});
+
+var advertisementsCollection = new AdvertisementsCollection(ad);
+console.log(advertisementsCollection.length); // 1[/js]
+
+[js]var advertisementsCollection = new AdvertisementsCollection({
+  make: 'Mazda',
+  model: 'Atenza',
+  year: 2007,
+  price: 1700000,
+  odometer: 70000
+});
+
+console.log(advertisementsCollection.length); // 1[/js]
+
+В обоих случаях получим уже готовый экземпляр коллекции с одним экземпляром модели.
+
+Также возможно создавать экземпляры коллекций с несколькими экземплярами моделей. В таком случае данные передаются в массиве.
+
+[js]var ad1 = new Advertisement({
+  make: 'Mazda',
+  model: 'Atenza',
+  year: 2007,
+  price: 1700000,
+  odometer: 70000
+});
+
+var ad2 = new Advertisement({
+  make: 'Тойота',
+  model: 'Королла',
+  year: 2010,
+  price: 2000000,
+  odometer: 40000
+});
+
+var advertisementsCollection = new AdvertisementsCollection([ad1, ad2]);
+console.log(advertisementsCollection.length); // 2[/js]
+
+[js]var advertisementsCollection = new AdvertisementsCollection([
+  {
+    make: 'Mazda',
+    model: 'Atenza',
+    year: 2007,
+    price: 1700000,
+    odometer: 70000
+  },
+  {
+    make: 'Тойота',
+    model: 'Королла',
+    year: 2010,
+    price: 2000000,
+    odometer: 40000
+  }
+]);
+
+console.log(advertisementsCollection.length); // 2[/js]
+
+Обратите внимание, что в обоих случаях во втором варианте мы просто передавали сырые данные для создания экземпляров моделей. Коллекция сама их создавала, потому что мы ей передали в свойстве <code>model</code> ссылку на класс модели. Если бы мы этого не сделали, то сработал бы только первый вариант с добавлением уже готовых моделей.
+
+<h4>Добавление дополнительных экземпляров моделей</h4>
+
+Нам часто может понадобится добавить новый экземпляр модели уже после создания коллекции. Для этого у коллекций есть метод <a href="http://backbonejs.ru/#Collection-add"><code>add</code></a>. Аналогично предыдущему варианту он принимает одиночные ссылки на существующие экземпляры модели или массивы с ними. А если у класса коллекции определено свойство <code>model</code>, то он также может принимать сырые данные для создания экземпляров моделей. При этом на модели срабатывает событие <code>add</code>, которое также всплывает на коллекции, в которую оно добавяется.
+
+[js]var ad1 = new Advertisement({
+  make: 'Mazda',
+  model: 'Atenza',
+  year: 2007,
+  price: 1700000,
+  odometer: 70000
+});
+
+var ad2 = new Advertisement({
+  make: 'Тойота',
+  model: 'Королла',
+  year: 2010,
+  price: 2000000,
+  odometer: 40000
+});
+
+var ad3 = new Advertisement({
+  make: 'Ниссан',
+  model: 'Альмера',
+  year: 2010,
+  price: 1400000,
+  odometer: 60000
+});
+
+var advertisementsCollection = new AdvertisementsCollection;
+
+advertisementsCollection.add([ad1, ad2]);
+console.log(advertisementsCollection.length); // 2
+
+advertisementsCollection.add(ad3);
+console.log(advertisementsCollection.length); // 3[/js]
+
+[js]var advertisementsCollection = new AdvertisementsCollection;
+
+advertisementsCollection.add([
+  {
+    make: 'Mazda',
+    model: 'Atenza',
+    year: 2007,
+    price: 1700000,
+    odometer: 70000
+  },
+  {
+    make: 'Тойота',
+    model: 'Королла',
+    year: 2010,
+    price: 2000000,
+    odometer: 40000
+  },
+  {
+    make: 'Ниссан',
+    model: 'Альмера',
+    year: 2010,
+    price: 1400000,
+    odometer: 60000
+  }
+]);
+
+console.log(advertisementsCollection.length); // 3[/js]
+
+<h4>Удаление экземпляров моделей из экземпляра коллекции</h4>
+
+Чтобы удалить экземпляр модели необходимо воспользоваться методом <a href="http://backbonejs.ru/#Collection-remove"><code>remove</code></a>. Этот метод точно также как и метод <code>add</code> принимает как одиночные ссылки на экземпляры моделей, так и массивы с ними. При этом на модели срабатывает событие <code>remove</code>, которое также всплывает на коллекции, из которой оно было удалено.
+
+[js]var ad1 = new Advertisement({
+  make: 'Mazda',
+  model: 'Atenza',
+  year: 2007,
+  price: 1700000,
+  odometer: 70000
+});
+
+var ad2 = new Advertisement({
+  make: 'Тойота',
+  model: 'Королла',
+  year: 2010,
+  price: 2000000,
+  odometer: 40000
+});
+
+var advertisementsCollection = new AdvertisementsCollection;
+
+advertisementsCollection.add([ad1, ad2]);
+console.log(advertisementsCollection.length); // 2
+
+advertisementsCollection.remove(ad2);
+console.log(advertisementsCollection.length); // 1[/js]
+
+<h4>Обновление коллекции целиком</h4>
+
+Иногда бывает необходимо обновить экземпляр коллекции разом, а не добавлять или удалять экземпляры моделей группами. Для этого используется метод <a href="http://backbonejs.ru/#Collection-reset"><code>reset</code></a>. Аналогично методу <code>add</code>, данный метод принимает ссылки на одиночные экземпляры моделей, сырые данные для создания экземпляров модели, если у класса коллекции определен класс модели в свойстве <code>model</code>, а также массивы с ними. При этом только на коллекции срабатывает событие <code>reset</code>, а индвидиуальных событий <code>add</code> и <code>remove</code> создано не будет.
+
+[js]var advertisementsCollection = new AdvertisementsCollection({
+  make: 'Mazda',
+  model: 'Atenza',
+  year: 2007,
+  price: 1700000,
+  odometer: 70000
+});
+
+console.log(advertisementsCollection.length); // 1
+
+advertisementsCollection.reset([
+  {
+    make: 'Тойота',
+    model: 'Королла',
+    year: 2010,
+    price: 2000000,
+    odometer: 40000
+  },
+  {
+    make: 'Ниссан',
+    model: 'Альмера',
+    year: 2010,
+    price: 1400000,
+    odometer: 60000
+  }
+]);
+
+console.log(advertisementsCollection.length); // 2[/js]
+
+Метод <code>reset</code> используется для оптимизации, когда использование индивидуальных событий <code>add, remove</code> слишком затратно.
+
+<h3>Доступ к элементам коллекции</h3>
+
+<h4>Доступ по порядковому номеру в коллекции</h4>
+
+Это самый простой способ получить доступ к экземпляру модели в коллекции. Однако, вы не часто будете им пользоваться для доступа к какой-то конкретной модели, так как он не очень надежен. Модели могут удаляться из коллекции, и если удаленная модель была в середине, то все последующие изменят свой порядковый номер. Также при желании можно вставлять экземпляры моделей в начало при помощи <a href="http://backbonejs.ru/#Collection-unshift"><code>unshift</code></a>, что медленнее, чем <code>add</code>, но тоже может иногда понадобится. Все это приводит к тому, что порядковый номер у экземпляра модели может меняться и довольно часто. Другое дело, если ваша коллекция отсортирована по какому-то признаку <em>(например в нашем случае это могла бы быть цена автомобиля)</em>. В таком случае доступ по порядковому номеру становится очень нужным инструментом.
+
+Для доступа к конкретному элементу коллекции используется метод <a href="http://backbonejs.ru/#Collection-at"><code>at</code></a>, в который передается порядковый номер искомого экземпляра модели.
+
+[js]advertisementsCollection.at(0); // первый экземпляр модели в коллекции
+advertisementsCollection.at(advertisementsCollection.length - 1); // последний экземпляр модели в коллекции[/js]
+
+<h4>Доступ по идентификатору</h4>
+
+Этот способ используют для доступа к конкретному экземпляру модели независимо от того, где он находится в коллекции. У каждой модели есть свой <code>id</code>, который ей был назначен серверной частью вашего приложения. Если модель была получена с сервера, а не создана на стороне клиента, то у нее уже есть свой <code>id</code>, или если модель была создана на стороне клиента, но была сохранена на сервере. Также <code>id</code> используется для генерации строки <code>URL</code> по умолчанию. <em>Как осуществлять связь с сервером при помощи Backbone, мы рассмотрим позднее, поэтому не переживайте, если пока вы не совсем поняли о чем здесь идет речь.</em> Идентификатор <code>id</code> можно задать вручную, если явно присвоить его экземпляру модели. 
+
+Backbone.js считает по умолчанию, что в качестве идентификатора используется атрибут <code>id</code>. Однако серверная сторона может использовать для этого другой атрибут, например <code>'_id'</code>. Для того чтобы Backbone также использовал его в качестве идентификатора, необходимо установить у моделей атрибут <code>idAttribute</code> равный <code>'_id'</code>.
+
+[js]var Advertisement = Backbone.Model.extend({
+  idAttribute: '_id',
+  defaults: {
+    sold: false
+  },
+  validate: function(attrs) {
+    if (attrs.price <= 0) {
+      return 'Цена должна быть больше 0';
+    }
+    
+    if (isNaN(attrs.price)) {
+      return 'Цена должна быть числом';
+    }
+  },
+  getPriceInRUB: function(rate) {
+    return this.get('price') * rate;
+  },
+  getPricePerKilometerTravelled: function() {
+    return this.get('price') / this.get('odometer');
+  },
+  toggleCarSoldState: function() {
+    this.get('sold') ? this.set('sold', false) : this.set('sold', true);
+  }
+});
+
+var ad = new Advertisement({
+  _id: 1,
+  make: 'Mazda',
+  model: 'Atenza',
+  year: 2007,
+  price: 1700000,
+  odometer: 70000
+});
+      
+alert(ad.id);  // 1
+alert(ad._id); // undefined
+alert(ad.get('id')); // undefined
+alert(ad.get('_id')); // 1[/js]
+
+Обратите внимание, что при создании экземпляра модели мы использовали <code>_id</code>. Именно этот идентификатор будет использоваться на сервере. Однако на стороне клиента значение этого идентификатора доступно через свойство <code>id</code>. Также доступ к значению идентификатора можно получить, обратившись к атрибуту <code>'_id'</code>.
+
+Если же экземпляр модели был только что создан на стороне клиента, то у него еще нет <code>id</code>. Тем не менее, нам уже может понадобится получить к нему доступ. В таком случае используется <code>cid</code> <em>(от <code>client id</code>)</em>, или клиентский идентификатор. Он назначается Backbone автоматически при создании нового экземпляра модели.
+
+Для доступа к экземпляру модели по идентификатору используется метод <a href="http://backbonejs.ru/#Collection-get"><code>get</code></a>. Он принимает в качестве аргумента либо <code>id</code>, либо <code>cid</code>.
+
+[js]var advertisementsCollection = new AdvertisementsCollection([
+  {
+    id: 1,
+    make: 'Mazda',
+    model: 'Atenza',
+    year: 2007,
+    price: 1700000,
+    odometer: 70000
+  },
+  {
+    id: 2,
+    make: 'Тойота',
+    model: 'Королла',
+    year: 2010,
+    price: 2000000,
+    odometer: 40000
+  },
+  {
+    id: 3,
+    make: 'Ниссан',
+    model: 'Альмера',
+    year: 2010,
+    price: 1400000,
+    odometer: 60000
+  }
+]);
+
+console.log(advertisementsCollection.get(2).get('make')); // "Тойота"[/js]
+
+<h4>Доступ ко всем экземплярам моделей</h4>
+
+Иногда нам нужно получить доступ к атрибутам всех экземпляров моделей в коллекции разом. Для этого используется метод <code>toJSON</code>. Вы наверняка помните его по главе, посвященной моделям. Как и там, несмотря на название, он выводит не строку JSON, а в данном случае массив со всеми атрибутами экземпляров моделей.
+
+[js]console.log(advertisementsCollection.toJSON()); 
+/* 
+[
+  {
+    make: "Mazda",
+    model: "Atenza",
+    odometer: 70000,
+    price: 1700000,
+    sold: false,
+    year: 2007
+  },
+  {
+    make: "Тойота",
+    model: "Королла",
+    odometer: 40000,
+    price: 2000000,
+    sold: false,
+    year: 2010
+  },
+  {
+    make: "Ниссан",
+    model: "Альмера",
+    odometer: 60000,
+    price: 1400000,
+    sold: false,
+    year: 2010
+  }
+]
+*/[/js]
+
+Так как мы имеем дело лишь с атрибутами экземпляров моделей, а не с самими экземплярами моделей, то данный метод в основном стоит использовать для отладки, когда нам нужно быстро глянуть, какие экземпляры моделей содержатся в коллекции.
+
+Нам довольно часто понадобится применять одни и те же действия ко всем экземплярам моделей в коллекции. Можно для этого использовать перебор коллекции, получая экземпляры моделей с помощью метода <code>at</code>. Однако лучше для этого использовать более специализированные методы, которые мы сейчас рассмотрим. Это улучшит структуру нашего кода и сделает его понятнее. 
+
+Как вы помните, жесткой зависимостью Backbone.js является Underscore.js. Это позволило разработчикам наделить модели и коллекции <a href="http://backbonejs.ru/#Collection-Underscore-Methods">вспомогательными функциями Underscore</a>. И ими можно пользоваться, как будто они являются их собственными. Если вы еще не знакомы с этими методами, то сейчас самое время <em>(документация по Underscore доступна на русском языке также как и по Backbone, поэтому если вас перекинуло на англоязычный сайт просто замените org на ru в адресной строке)</em>. А здесь мы рассмотрим только самые основные.
+
+Метод <a href="http://underscorejs.ru/#each"><code>each</code></a>, или его псевдоним <code>forEach</code>, имеет следующий вид.
+
+[js]list.each(iterator, [context])[/js]
+
+Этот метод перебирает все элементы коллекции, вызывая для каждого функцию, которую мы определили в качестве итератора, передавая ей контекст в <code>this</code>, если мы его определили. При этом итератору будут доступны следующие три параметра: (model, index, list). В нашем случае это будет экземпляр коллекции, его порядковый номер и сама коллекция.
+
+[js]advertisementsCollection.each(function(advertisement, index) {
+  console.log(index + ': Производитель - ' + advertisement.get('make'));
+});
+
+// "0: Производитель - Mazda"
+// "1: Производитель - Тойота"
+// "2: Производитель - Ниссан"[/js]
+
+Вы явно заметили, что формат нашей функции отличается от формата, который указан на сайте Underscore.
+
+[js]_.each(list, iterator, [context])[/js]
+
+Это произошло потому, что мы обратились не напрямую к библиотеке Underscore, а использовали встроенный метод коллекции <code>each</code>, который предоставил Backbone. Но разница небольшая - list перекочевал из аргументов на место псевдонима Underscore <code>_</code>. Поэтому, думаю, это не помешает вам с успехом пользоваться документацией Underscore, мысленно преобразовывая формат функций под Backbone. Однако, если вы привыкли обращаться напрямую к Underscore, то можете продолжать это делать. Ничего плохого в этом нет. Но мое личное мнение, которое никому не навязываю, в том, что встроенные методы Backbone более понятные даже для человека малознакомого с Underscore.
+
+Метод <a href="http://underscorejs.ru/#sortBy"><code>sortBy</code></a> имеет следующий вид.
+
+[js]list.sortBy(iterator, [context])[/js]
+
+Этот метод возвращает отсортиртированный массив с экземплярами моделей в коллекции в порядке возрастания по тому значению, которое вернет итератор. Итератору передается в качестве первого параметра экземпляр модели.
+
+Обратите внимание, что во-первых, этот метод ничего не делает с самой коллекцией, а во-вторых, возвращает не коллекцию, а обыкновенный массив с экземплярами моделей. Для того, чтобы отсортировать коллекцию из нашего примера по цене по возрастанию необходимо сделать следующее.
+
+[js]var advertisementsCollection = new AdvertisementsCollection([
+  {
+    make: 'Mazda',
+    model: 'Atenza',
+    year: 2007,
+    price: 1700000,
+    odometer: 70000
+  },
+  {
+    make: 'Тойота',
+    model: 'Королла',
+    year: 2010,
+    price: 2000000,
+    odometer: 40000
+  },
+  {
+    make: 'Ниссан',
+    model: 'Альмера',
+    year: 2010,
+    price: 1400000,
+    odometer: 60000
+  }
+]);
+
+var sortedByPrice = advertisementsCollection.sortBy(function(model) {
+  return model.get('price');
+});
+
+console.log(advertisementsCollection.toJSON()); // коллекция не изменилась
+
+advertisementsCollection.reset(sortedByPrice); // коллекция обновлена целиком
+console.log(advertisementsCollection.toJSON());
+/* 
+[
+  {
+    make: "Ниссан",
+    model: "Альмера",
+    odometer: 60000,
+    price: 1400000,
+    sold: false,
+    year: 2010
+  },
+  {
+    make: "Mazda",
+    model: "Atenza",
+    odometer: 70000,
+    price: 1700000,
+    sold: false,
+    year: 2007
+  },
+  {
+    make: "Тойота",
+    model: "Королла",
+    odometer: 40000,
+    price: 2000000,
+    sold: false,
+    year: 2010
+  },
+]
+*/[/js]
+
+<h3>Представление коллекции</h3>
+
+Итак, мы разобрались с тем, что такое коллекции, и немного посмотрели, как ими можно управлять. Однако, а с видами что? Тоже будем объединять их в коллекции? Несовсем. У коллекций создаются свои виды, которые очень похожи на виды у моделей. Главная разница в том, что виды привязываются к коллекциям с помощью свойства <code>collection</code>.
+
+[js]var advertisementsCollection = new AdvertisementsCollection([
+  {
+    make: 'Mazda',
+    model: 'Atenza',
+    year: 2007,
+    price: 1700000,
+    odometer: 70000
+  },
+  {
+    make: 'Тойота',
+    model: 'Королла',
+    year: 2010,
+    price: 2000000,
+    odometer: 40000
+  },
+  {
+    make: 'Ниссан',
+    model: 'Альмера',
+    year: 2010,
+    price: 1400000,
+    odometer: 60000
+  }
+]);
+
+var AdvertisementsCollectionView = Backbone.View.extend({
+  tagName: 'ol'
+});
+
+var advertisementsCollectionView = new AdvertisementsCollectionView({
+  collection: advertisementsCollection
+});
+
+console.log(advertisementsCollectionView.el); // <ol></ol>[/js]
+
+Обратите внимание, что, как и в случае со связыванием видов и моделей, мы связываем виды и коллекции на уровне их экземпляров.
+
+Теперь обратимся к функции <code>render</code>. Давайте подумаем, что она должна выполнять у вида коллекции. На самом деле основную работу мы уже сделали в виде модели. Теперь осталось все объединить. Наша <code>render</code> должна пробежаться по всей коллекции, для каждого экземпляра модели создать свой вид, запустив их метод <code>render</code>, а затем добавить их html код внутрь своего <code>el</code>.
+
+Попутно наведем небольшой порядок в нашем коде, убрав лишние строки, за которые теперь будет отвечать коллекция и ее вид.
+
+[js]<!DOCTYPE HTML>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      .car-sold {
+        text-decoration: line-through;
+      }
+    </style>
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.5.2/underscore-min.js"></script>
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/backbone.js/1.1.0/backbone-min.js"></script>
+  </head>
+  
+  <body>
+    <!-- Здесь будут располагаться DOM элементы -->
+    <h1 id="header">Список ваших лотов</h1>
+    
+    <script type="text/template" id="ad-template">
+      <input class="state-toggle" type="checkbox" <%= sold ? 'checked="checked"' : ''%>> Продается <strong><%= make %> <%= model %></strong> <%= year %> года выпуска с пробегом <%= odometer %> км. за <em><%= price %></em> иен <button class="edit-price">Изменить цену</button><button class="delete">Снять с торгов</button>
+    </script>
+    
+    <script>
+      // Здесь мы будем писать наш Javascript
+
+var Advertisement = Backbone.Model.extend({
+  defaults: {
+    sold: false
+  },
+  validate: function(attrs) {
+    if (attrs.price <= 0) {
+      return 'Цена должна быть больше 0';
+    }
+    
+    if (isNaN(attrs.price)) {
+      return 'Цена должна быть числом';
+    }
+  },
+  toggleCarSoldState: function() {
+    this.get('sold') ? this.set('sold', false) : this.set('sold', true);
+  }
+});
+
+var AdvertisementView = Backbone.View.extend({
+  tagName: 'li',
+  initialize: function() {
+    this.model.on('change:price', this.render, this);
+    this.model.on('destroy', this.remove, this);
+    this.model.on('change:price', function() {
+      alert('Новая цена: ' + this.model.get('price'));
+    }, this);
+    this.model.on('invalid', function(model, error) {
+      alert(error);
+    }, this);
+  },
+  events: {
+    'click .state-toggle': 'toggleCarSoldState',
+    'click .edit-price': 'editPrice',
+    'click .delete': 'destroy'
+  },
+  template: _.template($('#ad-template').html()),
+  render: function() {
+    this.$el.html(this.template(this.model.toJSON()));
+    
+    return this;
+  },
+  toggleCarSoldState: function() {
+    this.model.toggleCarSoldState();
+    
+    this.model.get('sold') ? this.$el.addClass('car-sold') : this.$el.removeClass('car-sold');
+  },
+  editPrice: function() {
+    var newPrice = prompt('Введите пожалуйста новую цену', this.model.get('price'));
+    
+    if (newPrice === null) return;
+    
+    newPrice = $.trim(newPrice);
+    if (newPrice === '') newPrice = NaN;
+    
+    this.model.set('price', +newPrice, {validate: true});
+  },
+  destroy: function() {
+    this.model.destroy();
+  },
+  remove: function() {
+    this.$el.remove();
+  }
+});
+      
+var AdvertisementsCollection = Backbone.Collection.extend({
+  model: Advertisement
+});
+
+var AdvertisementsCollectionView = Backbone.View.extend({
+  tagName: 'ol',
+  render: function() {
+    this.collection.each(this.addOne, this);
+    return this;
+  },
+  addOne: function(ad) {
+    var adView = new AdvertisementView({ model: ad });
+    
+    this.$el.append(adView.render().el);
+  }
+});
+      
+var advertisementsCollection = new AdvertisementsCollection([
+  {
+    make: 'Mazda',
+    model: 'Atenza',
+    year: 2007,
+    price: 1700000,
+    odometer: 70000
+  },
+  {
+    make: 'Тойота',
+    model: 'Королла',
+    year: 2010,
+    price: 2000000,
+    odometer: 40000
+  },
+  {
+    make: 'Ниссан',
+    model: 'Альмера',
+    year: 2010,
+    price: 1400000,
+    odometer: 60000
+  }
+]);
+
+var advertisementsCollectionView = new AdvertisementsCollectionView({
+  collection: advertisementsCollection
+});
+      
+$('#header').after(advertisementsCollectionView.render().el);
+      
+    </script>
+  </body>
+</html>[/js]
+
+<a class="jsbin-embed" href="http://jsbin.com/iBuFALa/2/embed?output">JS Bin</a><script src="http://static.jsbin.com/js/embed.js"></script>
+
+А теперь давайте разбираться в коде по порядку. Я сделал небольшую реорганизацию. Теперь все классы находятся сверху, а экземпляров, которые создаем вручную, осталось всего два - экземпляр коллекции и ее вид. Полагаю, что вопросов относительно коллекции быть уже не должно. А вот на ее виде остановимся поподробнее.
+
+[js]var AdvertisementsCollectionView = Backbone.View.extend({
+  tagName: 'ol',
+  render: function() {
+    this.collection.each(this.addOne, this);
+    return this;
+  },
+  addOne: function(ad) {
+    var adView = new AdvertisementView({ model: ad });
+    
+    this.$el.append(adView.render().el);
+  }
+});[/js]
+
+Функция <code>render</code> вызывает для каждого экземпляра модели метод <code>addOne</code>, передавая ей текущий контекст вторым аргументом. Метод <code>addOne</code> создает экземпляр вида и увязывает его с текущим экземпляром модели в коллекции. А затем в конец элемента <code>el</code> вида коллекции добавляем <code>el</code> элемент вида модели, предварительно вызвав его метод <code>render</code>.
+
+На этом мы заканчиваем рассматривать коллекции. В следующей главе мы займемся практикой, чтобы закрепить пройденный материал.
+
+<h2>Практика: добавление нового объявления</h2>
+
+Итак, на этот раз мы займемся практикой. Какого-то дополнительного теоритического материала в этой главе не будет, но от этого ее ценность нисколько не уменьшится. До этого момента мы имели дело только с экземплярами моделей и видов одного класса. Но ведь нам понадобится иметь дело с большим количеством разных классов. Иначе, зачем нам тогда заморачиваться с Backbone.js? Для рисования списков нам за глаза хватило бы и одного jQuery. Поэтому сейчас мы рассмотрим пример такого взаимодействия.
+
+В данный момент в нашем примере список объявлений статичен. Да, мы можем удалять из него отдельные объявления, но не можем добавлять новые. Этим мы и займемся. Для этого нам понадобится сделать следующее. Создать форму, либо изначально прописав ее в html, либо создать по шаблону. Создать новый вид для формы в Backbone, так как мы имеем дело с пользовательским интерфейсом. Прописать в этом виде обработчик, который будет реагировать на событие <code>submit</code> формы. Сделать так, чтобы обработчик создавал новый экземпляр модели Advertisement, а затем добавлял его в коллекцию. Коллекция в свою очередь должна реагировать на добавление новой модели и отрисовывать в своем виде новый элемент списка.
+
+Все необходимые знания для выполнения этого задания у вас уже есть. Поэтому, если чувствуете в себе силы, то не читайте дальше и выполните задание самостоятельно. Когда закончите, сверите свое решение с моим и разберем в нем основные моменты.
+
+Я надеюсь, что вы честно самостоятельно выполнили это задание, или хотя бы попытались. Теперь приступим к разбору полетов.
+
+Сперва необходимо создать форму, в которую пользователи будут вводить новые данные. Я выбрал вариант, в котором форма изначально есть в html, потому что в процессе работы приложения, она не меняется, а значит нет необходимости строить ее средствами шаблонизатора. Этим мы немного сэкономим на времени первого старта.
+
+[php]<form id="add-new-ad">
+  <input type="text" required placeholder="производитель" class="make-input">
+  <input type="text" required placeholder="модель" class="model-input">
+  <input type="text" required placeholder="год" class="year-input">
+  <input type="text" required placeholder="цена" class="price-input">
+  <input type="text" required placeholder="пробег" class="odometer-input">
+  <input type="submit" value="добавить лот">
+</form>[/php]
+
+Далее нам нужен новый вид для этой формы, который будет ей управлять. Этот вид должен обрабатывать событие <code>submit</code> формы и создавать при этом новый экземпляр модели, а потом добавлять ее в коллекцию.
+
+[js]var AddNewAdvertisementView = Backbone.View.extend({
+  el: '#add-new-ad',
+  events: {
+    'submit': 'submit'
+  },
+  submit: function(e) {
+    e.preventDefault();
+    
+    var ad = new Advertisement({
+      make: this.$el.find('.make-input').val(),
+      model: this.$el.find('.model-input').val(),
+      year: this.$el.find('.year-input').val(),
+      price: this.$el.find('.price-input').val(),
+      odometer: this.$el.find('.odometer-input').val(),
+    });
+    
+    advertisementsCollection.add(ad);
+  }
+});[/js]
+
+Так как мы использовали уже существующую форму на странице, то чтобы к ней привязать наш новый вид, мы зададим <code>el</code> самостоятельно. Как вы помните, в таком случае, ему передается строка с селектором на существующий элемент. Далее, при помощи объекта <code>events</code>, мы повешали обработчик на элемент <code>el</code>, т.е. на форму, что в случае наступления события <code>submit</code> вызывается одноименная функция, которую определили, чуть ниже. В этой функции, первым делом предотвратили поведение формы по умолчанию, т.е. чтобы она не пыталась никуда отправить свои данные и не обновляла страницу. Затем мы создаем новый экземпляр модели, используя значения, которые пользователь внес в поля ввода, и добавляем его в существующий экземпляр коллекции, ссылку на который берем <strong>из замыкания</strong>.
+
+Теперь осталось поймать это событие и добавить новый элемент списка. Так как мы имеем дело с отображением информации, то лучше всего для этого подойдет вид коллекции.
+
+[js]var AdvertisementsCollectionView = Backbone.View.extend({
+  tagName: 'ol',
+  initialize: function() {
+    this.collection.on('add', this.addOne, this);
+  },
+  render: function() {
+    this.collection.each(this.addOne, this);
+    return this;
+  },
+  addOne: function(ad) {
+    var adView = new AdvertisementView({ model: ad });
+    
+    this.$el.append(adView.render().el);
+  }
+});[/js]
+
+Так как обработчик нам нужно повешать на саму коллекцию, то используем для этого функцию <code>initialize</code> вместо объекта <code>events</code>, который нужен для навешивания обработчиков на DOM элементы. У нас уже была функция, которая добавляла один элемент списка, поэтому дополнительно делать ничего не пришлось. При срабатывании события <code>add</code> в функцию-обработчик первым параметром передается добавляемый экземпляр коллекции, который подхватывается методом <code>addOne</code>.
+
+Мы могли бы использовать вместо <code>addOne</code> метод <code>render</code>, и все бы работало. Однако, в таком случае список был бы перестроен целиком, что было бы излишним, если нам нужно всего-то добавить один элемент. Казалось бы мелочь, но если в списке много существующих элементов, то это снизит отзывчивость нашего интерфейса.
+
+Теперь посмотрим код целиком и оценим результат в браузере.
+
+[js]<!DOCTYPE HTML>
+<html>
+  
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      .car-sold {
+        text-decoration: line-through;
+      }
+    </style>
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.5.2/underscore-min.js"></script>
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/backbone.js/1.1.0/backbone-min.js"></script>
+  </head>
+  
+  <body>
+    <!-- Здесь будут располагаться DOM элементы -->
+    <h1 id="header">Список ваших лотов</h1>
+    <form id="add-new-ad">
+      <input type="text" required placeholder="производитель" class="make-input">
+      <input type="text" required placeholder="модель" class="model-input">
+      <input type="text" required placeholder="год" class="year-input">
+      <input type="text" required placeholder="цена" class="price-input">
+      <input type="text" required placeholder="пробег" class="odometer-input">
+      <input type="submit" value="добавить лот">
+    </form>
+    
+    <script type="text/template" id="ad-template">
+      <input class="state-toggle" type="checkbox" <%= sold ? 'checked="checked"' : ''%>> Продается <strong><%= make %> <%= model %></strong> <%= year %> года выпуска с пробегом <%= odometer %> км. за <em><%= price %></em> иен <button class="edit-price">Изменить цену</button><button class="delete">Снять с торгов</button>
+    </script>
+    
+    <script>
+      // Здесь мы будем писать наш Javascript
+
+var Advertisement = Backbone.Model.extend({
+  defaults: {
+    sold: false
+  },
+  validate: function(attrs) {
+    if (attrs.price <= 0) {
+      return 'Цена должна быть больше 0';
+    }
+    
+    if (isNaN(attrs.price)) {
+      return 'Цена должна быть числом';
+    }
+  },
+  toggleCarSoldState: function() {
+    this.get('sold') ? this.set('sold', false) : this.set('sold', true);
+  }
+});
+
+var AdvertisementView = Backbone.View.extend({
+  tagName: 'li',
+  initialize: function() {
+    this.model.on('change:price', this.render, this);
+    this.model.on('destroy', this.remove, this);
+    this.model.on('change:price', function() {
+      alert('Новая цена: ' + this.model.get('price'));
+    }, this);
+
+    this.model.on('invalid', function(model, error) {
+      alert(error);
+    }, this);
+  },
+  events: {
+    'click .state-toggle': 'toggleCarSoldState',
+    'click .edit-price': 'editPrice',
+    'click .delete': 'destroy'
+  },
+  template: _.template($('#ad-template').html()),
+  render: function() {
+    this.$el.html(this.template(this.model.toJSON()));
+    
+    return this;
+  },
+  toggleCarSoldState: function() {
+    this.model.toggleCarSoldState();
+    
+    this.model.get('sold') ? this.$el.addClass('car-sold') : this.$el.removeClass('car-sold');
+  },
+  editPrice: function() {
+    var newPrice = prompt('Введите пожалуйста новую цену', this.model.get('price'));
+    
+    if (newPrice === null) return;
+    
+    newPrice = $.trim(newPrice);
+    if (newPrice === '') newPrice = NaN;
+    
+    this.model.set('price', +newPrice, {validate: true});
+  },
+  destroy: function() {
+    this.model.destroy();
+  },
+  remove: function() {
+    this.$el.remove();
+  }
+});
+      
+var AdvertisementsCollection = Backbone.Collection.extend({
+  model: Advertisement
+});
+
+var AdvertisementsCollectionView = Backbone.View.extend({
+  tagName: 'ol',
+  initialize: function() {
+    this.collection.on('add', this.addOne, this);
+  },
+  render: function() {
+    this.collection.each(this.addOne, this);
+    return this;
+  },
+  addOne: function(ad) {
+    var adView = new AdvertisementView({ model: ad });
+    
+    this.$el.append(adView.render().el);
+  }
+});
+
+var AddNewAdvertisementView = Backbone.View.extend({
+  el: '#add-new-ad',
+  events: {
+    'submit': 'submit'
+  },
+  submit: function(e) {
+    e.preventDefault();
+    
+    var ad = new Advertisement({
+      make: this.$el.find('.make-input').val(),
+      model: this.$el.find('.model-input').val(),
+      year: this.$el.find('.year-input').val(),
+      price: this.$el.find('.price-input').val(),
+      odometer: this.$el.find('.odometer-input').val(),
+    });
+    
+    advertisementsCollection.add(ad);
+  }
+});
+      
+var advertisementsCollection = new AdvertisementsCollection([
+  {
+    make: 'Mazda',
+    model: 'Atenza',
+    year: 2007,
+    price: 1700000,
+    odometer: 70000
+  },
+  {
+    make: 'Тойота',
+    model: 'Королла',
+    year: 2010,
+    price: 2000000,
+    odometer: 40000
+  },
+  {
+    make: 'Ниссан',
+    model: 'Альмера',
+    year: 2010,
+    price: 1400000,
+    odometer: 60000
+  }
+]);
+
+var advertisementsCollectionView = new AdvertisementsCollectionView({
+  collection: advertisementsCollection
+});
+      
+var addNewAdvertisementView = new AddNewAdvertisementView;
+      
+$('body').append(advertisementsCollectionView.render().el);
+      
+    </script>
+  </body>
+
+</html>[/js]
+
+<a class="jsbin-embed" href="http://jsbin.com/iBuFALa/3/embed?output">JS Bin</a><script src="http://static.jsbin.com/js/embed.js"></script>
+
+Внимательный читатель наверняка обратил внимание, что вступление главы не очень вяжется с ее содержанием, да еще и подозрительно выделен в тексте тот факт, что ссылка на существующий экземпляр коллекции была взята из замыкания, а потому ждет подвоха. И он будет прав. Поздравляю, мы только что рассмотрели то что в программировании называется anti-pattern, или в простонародье граблями, на которые дружно наступили.
+
+Однако, что плохого в том что мы сделали? Все же работает. На самом деле все не так страшно, если приложение небольшое. Но все может измениться, если оно разрастется, а ведь Backbone как раз и следует использовать для больших приложений, во всяком случае несколько больших, чем наш пример.
+
+Итак, здесь два негативных момента. Давайте еще раз глянем на исходный код.
+
+[js]var AddNewAdvertisementView = Backbone.View.extend({
+  el: '#add-new-ad',
+  events: {
+    'submit': 'submit'
+  },
+  submit: function(e) {
+    e.preventDefault();
+    
+    var ad = new Advertisement({
+      make: this.$el.find('.make-input').val(),
+      model: this.$el.find('.model-input').val(),
+      year: this.$el.find('.year-input').val(),
+      price: this.$el.find('.price-input').val(),
+      odometer: this.$el.find('.odometer-input').val(),
+    });
+    
+    advertisementsCollection.add(ad);
+  }
+});
+      
+var advertisementsCollection = new AdvertisementsCollection([
+  {
+    make: 'Mazda',
+    model: 'Atenza',
+    year: 2007,
+    price: 1700000,
+    odometer: 70000
+  },
+  {
+    make: 'Тойота',
+    model: 'Королла',
+    year: 2010,
+    price: 2000000,
+    odometer: 40000
+  },
+  {
+    make: 'Ниссан',
+    model: 'Альмера',
+    year: 2010,
+    price: 1400000,
+    odometer: 60000
+  }
+]);
+
+var advertisementsCollectionView = new AdvertisementsCollectionView({
+  collection: advertisementsCollection
+});
+      
+var addNewAdvertisementView = new AddNewAdvertisementView;[/js]
+
+Сперва мы объявили класс вида, отвечающего за работу нашей формы. Важный момент здесь находится в строке 17. Здесь мы сослались на advertisementsCollection. Обратите внимание, что это не класс коллекции, а конкретный экземпляр коллекции, который хранит в себе наши объявления. Затем мы объявили этот самый экземпляр коллекции в строке 21. Далее идет объявление вида этой коллекции в строке 45, но для нас на данный момент это не интересно. А вот в строке 49 мы объявили уже экземпляр вида, отвечающего за работу формы. Так вот, чтобы эта конструкция работала, нужно чтобы экземпляр вида, объявленный в строке 49, мог видеть экземпляр коллекции, объявленный в строке 21. Когда пользователь нажмет на кнопку <code>submit</code> нашей формы, то экземпляр вида со строки 49 будет искать коллекцию с именем advertisementsCollection, чтобы добавить в нее новый экземпляр модели. И если он ее не найдет, то ничего не сработает. Таким образом, и экземпляр вида, и экземпляр коллекции должны быть в одной области видимости, а такое не всегда возможно.
+
+Вторая проблема в том, что таким способом мы повысили интеграцию нашего приложения, да еще и таким неявным способом. Чтобы понять, что наш класс вида зависит от какого-то конкретного экземпляра коллекции, надо прочитать весь его код целиком. К тому же, если будет использоваться RequireJS, то все классы будут в отдельных файлах, и нужно будет еще догадаться, что его нужно прочитать. А потом придет другой разработчик, обзовет advertisementsCollection как-нибудь иначе, и вылезет ошибка, причем там, где ее не ожидали. Еще одна проблема появится, если нам захочется создать более одного вида формы. Например, это может понадобиться, если у нас будет несколько списков на странице, и у каждого должна быть своя форма для добавления новых элементов. Разные списки, значит разные экземпляры коллекций, а у нас все экземпляры видов будут привязаны только к одному конкретному, так как к нему привязан класс вида.
+
+Возможным вариантом решения этих проблем было бы передавать ссылку на экземпляр коллекции уже экземпляру вида формы, а не классу <em>(обратите внимание на строку 22)</em>.
+
+[js]var AddNewAdvertisementView = Backbone.View.extend({
+  el: '#add-new-ad',
+  events: {
+    'submit': 'submit'
+  },
+  submit: function(e) {
+    e.preventDefault();
+    
+    var ad = new Advertisement({
+      make: this.$el.find('.make-input').val(),
+      model: this.$el.find('.model-input').val(),
+      year: this.$el.find('.year-input').val(),
+      price: this.$el.find('.price-input').val(),
+      odometer: this.$el.find('.odometer-input').val(),
+    });
+    
+    this.collection.add(ad);
+  }
+});
+
+var addNewAdvertisementView = new AddNewAdvertisementView({
+  collection: advertisementsCollection
+});[/js]
+
+И экземпляр вида, и экземпляр коллекции по прежнему должны находиться в одной области видимости, но по крайней мере сейчас это очевидно, так как при объявлении addNewAdvertisementView мы передаем ему ссылку на экземпляр коллекции advertisementsCollection. К тому же, если нам потребуется создать несколько экземпляров этого вида, то нам придется только поменять ссылки у их экземпляров на соответствующие экзмепляры коллекций.
+
+Однако, и в этом решении не все гладко. Такая же зависимость у нас осталась теперь уже от класса модели <code>Advertisement</code> <em>(в последнем листинге кода это строка 9, в которой создается новый экземпляр модели)</em>. И хотя зависимость класса от класса - это гораздо лучше, чем зависимость класса от экземпляра класса, попробуем от нее избавиться. На самом деле нам не нужен доступ к классу Advertisement, ведь он есть у коллекции, так как в описании ее класса мы передали ссылку на класс <code>Advertisement</code> в свойстве <code>model</code>, а потому мы можем передать ей сырые данные, которые она использует для создания экземпляра модели.
+
+[js]var AddNewAdvertisementView = Backbone.View.extend({
+  el: '#add-new-ad',
+  events: {
+    'submit': 'submit'
+  },
+  submit: function(e) {
+    e.preventDefault();
+    
+    var ad = {
+      make: this.$el.find('.make-input').val(),
+      model: this.$el.find('.model-input').val(),
+      year: this.$el.find('.year-input').val(),
+      price: this.$el.find('.price-input').val(),
+      odometer: this.$el.find('.odometer-input').val(),
+    };
+    
+    this.collection.add(ad);
+  }
+});
+
+var addNewAdvertisementView = new AddNewAdvertisementView({
+  collection: advertisementsCollection
+});[/js]
+
+Теперь код смотрится гораздо лучше. Это был пример связи один к одному. Также этот способ подойдет для связей многие к одному. Но связи могут быть и один ко многим, и многие ко многим. Если использовать подобный подход, код быстро превратится в "кучу лапши". Нам придется хранить ссылки на все зависимые экземпляры классов, которые должны будут получать указания, а также помнить их методы, с помощью которых мы планируем ими управлять. И ладно, если это встроенные методы Backbone, такие как метод <code>add</code>, который мы использовали только что. Но ведь там могут быть и уникальные методы вроде <code>getPriceInRUB</code>. В итоге мы снизим читаемость кода и повысим при этом его интеграцию, осложнив внесение в него дальнейших изменений.
+
+Таким образом, мы мягко подошли к новой главе, в которой как раз и научимся решать данную проблему. И помогут нам в этом собственные события.
