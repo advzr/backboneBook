@@ -1,4 +1,4 @@
-Итак, я твердо решил написать хорошую книгу по Backbone.js. Делать это я буду в свободное время, поэтому возможно новые главы будут появляться не так часто как хотелось бы. Тем более, что я хочу написать хорошую книгу. А это значит, что главным приоритетом для меня будет не скорость, а качество. Также, я не исключаю, что буду возвращаться к предыдущим главам для их улучшения. Поэтому вполне возможно, что прочитав ее раз, через некоторое время мы сможете обнаружить для себя в ней что-то новое. Этим и замечательна online публикация. О всех важных изменениях буду публиковать сообщения в блоге. Поэтому подписывайтесь на <a title="RSS рассылка" href="?feed=rss2">RSS</a> и следите за обновлениями. Очень надеюсь, что данная книга окажется для вас полезной.
+Итак, я твердо решил написать хорошую книгу по Backbone.js. Делать это я буду в свободное время, поэтому возможно новые главы будут появляться не так часто как хотелось бы. Тем более, что я хочу написать хорошую книгу. А это значит, что главным приоритетом для меня будет не скорость, а качество. Также, я не исключаю, что буду возвращаться к предыдущим главам для их улучшения. Поэтому вполне возможно, что прочитав ее раз, через некоторое время мы сможете обнаружить для себя в ней что-то новое. Этим и замечательна online публикация. О всех важных изменениях буду публиковать сообщения в блоге. Поэтому подписывайтесь на <a title="RSS рассылка" href="?feed=rss2">RSS</a> и следите за обновлениями. Очень надеюсь, что данная книга окажется для вас полезной. Обсудить ее можно <a href="?p=191">здесь</a>.
 
 С уважением
 Дмитрий Гавриков
@@ -12,7 +12,7 @@
 	<li>шаблонизация с использованием Underscore/Lodash</li>
 	<li>организация кода при помощи Require.js (в более поздних главах)</li>
 </ul>
-Если что-то из этого списка для вас является непонятным, то рекоммендую перед дальнейшим чтением восполнить эти пробелы, чтобы получить максимальную пользу от книги.
+Если что-то из этого списка для вас является непонятным, то рекомендую перед дальнейшим чтением восполнить эти пробелы, чтобы получить максимальную пользу от книги.
 
 Также не стоит воспринимать данную книгу как замену официальной документации. Наоборот, я буду стараться мягко подталкивать вас к ней. Понимаю, что очень не просто сразу начать изучать новую технологию, основываясь только на документации. Иначе бы в подобных книгах не было бы необходимости. Их цель дать базу, после которой просмотр документации станет естественным и неотъемлемым элементом в работе. Надеюсь, что после прочтения моей книги, вы хлопнете себя по лбу и, глядя на сайт с документацией, скажете "как же я мог этого не понимать, это же так просто".
 
@@ -1987,3 +1987,550 @@ var addNewAdvertisementView = new AddNewAdvertisementView({
 Теперь код смотрится гораздо лучше. Это был пример связи один к одному. Также этот способ подойдет для связей многие к одному. Но связи могут быть и один ко многим, и многие ко многим. Если использовать подобный подход, код быстро превратится в "кучу лапши". Нам придется хранить ссылки на все зависимые экземпляры классов, которые должны будут получать указания, а также помнить их методы, с помощью которых мы планируем ими управлять. И ладно, если это встроенные методы Backbone, такие как метод <code>add</code>, который мы использовали только что. Но ведь там могут быть и уникальные методы вроде <code>getPriceInRUB</code>. В итоге мы снизим читаемость кода и повысим при этом его интеграцию, осложнив внесение в него дальнейших изменений.
 
 Таким образом, мы мягко подошли к новой главе, в которой как раз и научимся решать данную проблему. И помогут нам в этом собственные события.
+
+<h2>События</h2>
+
+Мы уже касались событий, когда рассматривали модели, виды и коллекциями. Однако, пришло время уделить им больше внимания.
+
+За систему событий Backbone.js отвечает объект <a href="http://backbonejs.ru/#Events"><code>Backbone.Events</code></a>. Не надо путать его с объектом <code>events</code>, который мы использовали в видах для навешивания обработчиков. Тот объект был просто ассоциативным массивом, инструкцией, какой обработчик надо запустить при наступлении того или иного события на элементах DOM. Всю же работу выполнял <code>Backbone.Events</code>. Этот объект является миксином, который "вмешан" в следующие классы:
+
+<ul>
+  <li>Backbone</li>
+  <li>Backbone.Model</li>
+  <li>Backbone.Collection</li>
+  <li>Backbone.Router</li>
+  <li>Backbone.History</li>
+  <li>Backbone.View</li>
+</ul>
+
+Это значит, что эти классы, а также их наследники, могут создавать события и слушать их. А как мы помним, все наши классы моделей, видов, коллекций мы создавали с помощью метода <code>extend</code>. Таким образом, все наши классы наследуют от базовых классов Backbone. <em>На самом деле никто не запрещает нам наследовать от наших собственных классов с помощью того же метода <code>extend</code>, так как он корректно устанавливает цепочку прототипов. Таким образом классы могут наследоваться сколько угодно, но сейчас не об этом речь.</em>
+
+<h3>Управление обработчиками при помощи <code>on/off</code></h3>
+
+Навешивание обработчиков при помощи <a href="http://backbonejs.ru/#Events-on"><code>on</code></a> мы уже не однократно применяли в коде нашего примера.
+
+[js]object.on(event, callback, [context])[/js]
+
+Вы наверняка привыкли к нему, пользуясь jQuery. Однако, как мы уже рассматривали, у реализации <code>on</code> от Backbone есть небольшое отличие от своего собрата. Это третий необязательный параметр, передающий контекст функции обработчику.
+
+В противоположность методу <code>on</code>, есть метод <a href="http://backbonejs.ru/#Events-off"><code>off</code></a>, который снимает обработчики и имеет следующий вид.
+
+[js]object.off([event], [callback], [context])[/js]
+
+Мне нечего добавить к официальной документации по этому методу. Просто сходите по ссылке и посмотрите его описание с примерами.
+
+<h3>Управление обработчиками при помощи <code>listenTo/stopListening</code></h3>
+
+Метод <a href="http://backbonejs.ru/#Events-listenTo"><code>listenTo</code></a> имеет следующий синтаксис.
+
+[js]object.listenTo(other, event, callback)[/js]
+
+В отличие от <code>on</code>, вызываемого у объекта, на котором будет создаваться событие, метод <code>listenTo</code> вызывается на объекте, который подписывается на события, и заставляет его слушать событие <code>event</code> на объекте <code>other</code>, вызываея при этом функцию <code>callback</code>. При этом <code>this</code> в обработчике всегда ссылается на слушающий объект.
+
+Опять же, в противовес <code>listenTo</code> существует метод <a href="http://backbonejs.ru/#Events-stopListening"><code>stopListening</code></a>.
+
+[js]object.stopListening([other], [event], [callback])[/js]
+
+Его действие схоже с действием метода <code>off</code>, позволяя снимать либо все обработчики, навешанные с помощью метода <code>listenTo</code>, если он вызван без аргументов, либо снимать обработчики выборочно в зависимости от передаваемых ему аргументов.
+
+Если уже существуют <code>on/off</code>, к которым привыкли все пользователи jQuery, то зачем придумывать что-то еще? Дело в том, что есть одна проблема с <code>on/off</code>. Если удалить модель одновременно с ее видом, то проблем никаких не возникнет. Но если удалить только вид, который слушает события модели, но обработчики при этом не были сняты с помощью <code>off</code>, то в модели останется ссылка на обработчики, а значит сборщик мусора Javascript не удалит вид из памяти. Такие виды называют видами-призраками (ghost view) или зомби. Как их называть, не суть важно и утечка памяти - не единственное следствие. Так как обработчики с видами остаются в памяти, то они продолжают работать, что может приводить к очень трудноуловимым ошибкам.
+
+Наверное самым простым выходом из сложившейся ситуации является использование <code>listenTo</code> вместо <code>on</code>, потому что, когда нам понадобится удалить вид, достаточно просто воспользоваться встроенным методом <a href="http://backbonejs.ru/#View-remove"><code>remove</code></a>, который автоматически вызовет на удаляемом виде метод <code>stopListening</code>, тем самым разорвав связи удаляемого вида с внешним кодом. Если мы уверены, что вид будет существовать столько, сколько существует само приложение, то использование <code>on</code> безопасно.
+
+<h3>Одноразовый вызов обработчика</h3>
+
+Методы <a href="http://backbonejs.ru/#Events-once"><code>once</code></a> и <a href="http://backbonejs.ru/#Events-listenToOnce"><code>listenToOnce</code></a> ведут себя точно также как методы <code>on</code> и <code>listenTo</code> соответственно с той лишь разницей, что после первого срабатывания события обработчики, привязанные с их помощью, удаляются.
+
+<h3>Собственные события (custom events)</h3>
+
+Если вы активно пользуетесь ООП, а я надеюсь, что так и есть, то вы наверняка знакомы с собственными событиями. Это очень удобный способ связи между объектами, потому что позволяет объекту-отправителю события ничего не знать о получателе. К тому же этих получателей может быть неограниченное количество. Все что от них требуется - это подписаться на события объекта-отправителя и реагировать при его наступлении.
+
+Обычно для создания собственного события используется метод jQuery <a href="http://api.jquery.com/triggerHandler/"><code>triggerHandler</code></a>. В Backbone есть своя реализация метода для создания собственных событий, которая немного отличается от реализации в jQuery.
+
+Для создания собственных событий используется метод <a href="http://backbonejs.ru/#Events-trigger"><code>trigger</code></a>.
+
+[js]object.trigger(event, [*args])[/js]
+
+Этот метод генерирует событие event, которое написано в виде строки (или группы событий, если они написаны через пробел). При этом все последующие аргументы за event будут переданы в обработчик события.
+
+Чтобы посмотреть в работе собственные события, переделаем предыдущее решение из практической главы.
+
+[js]var AdvertisementsCollection = Backbone.Collection.extend({
+  model: Advertisement,
+  initialize: function() {
+    this.on('addNewModel', this.add, this);
+  }
+});
+
+var AdvertisementsCollectionView = Backbone.View.extend({
+  tagName: 'ol',
+  initialize: function() {
+    this.collection.on('add', this.addOne, this);
+  },
+  render: function() {
+    this.collection.each(this.addOne, this);
+    return this;
+  },
+  addOne: function(ad) {
+    var adView = new AdvertisementView({ model: ad });
+    
+    this.$el.append(adView.render().el);
+  }
+});
+
+var AddNewAdvertisementView = Backbone.View.extend({
+  el: '#add-new-ad',
+  events: {
+    'submit': 'submit'
+  },
+  submit: function(e) {
+    e.preventDefault();
+    
+    var ad = {
+      make: this.$el.find('.make-input').val(),
+      model: this.$el.find('.model-input').val(),
+      year: this.$el.find('.year-input').val(),
+      price: this.$el.find('.price-input').val(),
+      odometer: this.$el.find('.odometer-input').val(),
+    };
+    
+    this.collection.trigger('addNewModel', ad);
+  }
+});
+      
+var advertisementsCollection = new AdvertisementsCollection([
+  {
+    make: 'Mazda',
+    model: 'Atenza',
+    year: 2007,
+    price: 1700000,
+    odometer: 70000
+  },
+  {
+    make: 'Тойота',
+    model: 'Королла',
+    year: 2010,
+    price: 2000000,
+    odometer: 40000
+  },
+  {
+    make: 'Ниссан',
+    model: 'Альмера',
+    year: 2010,
+    price: 1400000,
+    odometer: 60000
+  }
+]);
+
+var advertisementsCollectionView = new AdvertisementsCollectionView({
+  collection: advertisementsCollection
+});
+   
+var addNewAdvertisementView = new AddNewAdvertisementView({
+  collection: advertisementsCollection
+});[/js]
+
+Обратите внимание на строку номер 40. В ней мы вместо того, чтобы сразу вызвать у коллекции метод <code>add</code>, создали собственное событие <code>addNewModel</code>. Также мы повесили обработчик на коллекцию на строке 4, который сработает при появлении данного события на коллекции и вызовет у нее метод <code>add</code>, которому также передастся наш ассоциативный массив с новыми данными для создания нового экземпляра модели.
+
+Данный пример был приведен скорее для демонстрации метода <code>trigger</code> в действии, нежели как руководство к действию. Наш код в итоге стал сложнее, появился промежуточный этап с новым событием, поэтому предыдущее решение было лучше. Зачем тогда вообще нужны собственные события? Они нужны в первую очередь там, где встроенных методов и событий Backbone не хватает, или наше собственное событие лучше расскажет своим названием, что происходит в коде.
+
+Также обратите внимание, что экземпляру вида addNewAdvertisementView, отвечающему за форму, по прежнему надо быть в одной области видимости с экземпляром коллекции. Хоть мы и создаем событие, т.е. объекту-отправителю нет необходимости иметь доступ к объекту-получателю, в данном примере такой доступ оказался необходим, ведь мы создавали событие прямо на объекте-получателе. Однако, нам никто не мешает создавать некое событие на каком-то третьем объекте, к которому есть доступ и у объекта-отправителя, и у объекта-получателя, а друг о друге они могут и не знать вовсе. Для этого нам нужно создать такой объект, который будет выступать связующей шиной для объектов.
+
+Для этого можно создать новый объект путем расширения <code>Backbone.Events</code>. Его обычно называют <code>vent</code> <em>(сокращение от event)</em>.
+
+[js]var vent = {};
+_.extend(vent, Backbone.Events);[/js]
+
+Теперь на этом объекте можно создавать свои события и на нем же их слушать.
+
+[js]vent.on('hello', function(person) {
+  alert('Привет, ' + person);
+});
+
+vent.trigger('hello', 'Пятачок'); // "Привет, Пятачок"[/js]
+
+Переделаем наш пример с использованием диспетчера vent.
+
+[js]var vent = {};
+_.extend(vent, Backbone.Events);
+
+var AdvertisementsCollection = Backbone.Collection.extend({
+  model: Advertisement,
+  initialize: function() {
+    vent.on('addNewModel', this.add, this);
+  }
+});
+      
+var AdvertisementsCollectionView = Backbone.View.extend({
+  tagName: 'ol',
+  initialize: function() {
+    this.collection.on('add', this.addOne, this);
+  },
+  render: function() {
+    this.collection.each(this.addOne, this);
+    return this;
+  },
+  addOne: function(ad) {
+    var adView = new AdvertisementView({ model: ad });
+    
+    this.$el.append(adView.render().el);
+  }
+});
+
+var AddNewAdvertisementView = Backbone.View.extend({
+  el: '#add-new-ad',
+  events: {
+    'submit': 'submit'
+  },
+  submit: function(e) {
+    e.preventDefault();
+    
+    var ad = {
+      make: this.$el.find('.make-input').val(),
+      model: this.$el.find('.model-input').val(),
+      year: this.$el.find('.year-input').val(),
+      price: this.$el.find('.price-input').val(),
+      odometer: this.$el.find('.odometer-input').val(),
+    };
+    
+    vent.trigger('addNewModel', ad);
+  }
+});
+      
+var advertisementsCollection = new AdvertisementsCollection([
+  {
+    make: 'Mazda',
+    model: 'Atenza',
+    year: 2007,
+    price: 1700000,
+    odometer: 70000
+  },
+  {
+    make: 'Тойота',
+    model: 'Королла',
+    year: 2010,
+    price: 2000000,
+    odometer: 40000
+  },
+  {
+    make: 'Ниссан',
+    model: 'Альмера',
+    year: 2010,
+    price: 1400000,
+    odometer: 60000
+  }
+]);
+
+var advertisementsCollectionView = new AdvertisementsCollectionView({
+  collection: advertisementsCollection
+});
+   
+var addNewAdvertisementView = new AddNewAdvertisementView;[/js]
+
+На 43 строке мы создаем событие <code>addNewModel</code> на диспетчере <code>vent</code>, а на 7 строке его ловим уже внутри класса коллекции, создавая новый экземпляр модели. Теперь, несмотря на то, что мы добавили новый промежуточный шаг в виде вызова события, мы разорвали связь между видом, отвечающим за форму, и экземпляром коллекции. Обратите внимание, что в последней строчке мы просто объявляем вид <code>addNewAdvertisementView</code>. Теперь эти объекты между собой напрямую ничего не связывает. Они могут быть в любых частях кода, главное чтобы им обоим был виден объект <code>vent</code>. По этой причине <code>vent</code> лучше располагать поближе к глобальному уровню.
+
+Нас никто не ограничивает в количестве подобных объектов. Если приложение большое, то возможно будет иметь смысл создать более одного такого <code>vent</code>. Еще одна тонкость, граничащая с хаком, состоит в том, что на роль диспетчера подойдет любой объект, который наследует от <code>Backbone.Events</code>. Например, сам объект <code>Backbone</code>. Его не нужно создавать, так как он уже есть, и он доступен из любой точки программы. В таком случае предыдущий пример, выглядел бы вот так.
+
+[js]var AdvertisementsCollection = Backbone.Collection.extend({
+  model: Advertisement,
+  initialize: function() {
+    Backbone.on('addNewModel', this.add, this);
+  }
+});
+      
+var AdvertisementsCollectionView = Backbone.View.extend({
+  tagName: 'ol',
+  initialize: function() {
+    this.collection.on('add', this.addOne, this);
+  },
+  render: function() {
+    this.collection.each(this.addOne, this);
+    return this;
+  },
+  addOne: function(ad) {
+    var adView = new AdvertisementView({ model: ad });
+    
+    this.$el.append(adView.render().el);
+  }
+});
+
+var AddNewAdvertisementView = Backbone.View.extend({
+  el: '#add-new-ad',
+  events: {
+    'submit': 'submit'
+  },
+  submit: function(e) {
+    e.preventDefault();
+    
+    var ad = {
+      make: this.$el.find('.make-input').val(),
+      model: this.$el.find('.model-input').val(),
+      year: this.$el.find('.year-input').val(),
+      price: this.$el.find('.price-input').val(),
+      odometer: this.$el.find('.odometer-input').val(),
+    };
+    
+    Backbone.trigger('addNewModel', ad);
+  }
+});
+      
+var advertisementsCollection = new AdvertisementsCollection([
+  {
+    make: 'Mazda',
+    model: 'Atenza',
+    year: 2007,
+    price: 1700000,
+    odometer: 70000
+  },
+  {
+    make: 'Тойота',
+    model: 'Королла',
+    year: 2010,
+    price: 2000000,
+    odometer: 40000
+  },
+  {
+    make: 'Ниссан',
+    model: 'Альмера',
+    year: 2010,
+    price: 1400000,
+    odometer: 60000
+  }
+]);
+
+var advertisementsCollectionView = new AdvertisementsCollectionView({
+  collection: advertisementsCollection
+});
+   
+var addNewAdvertisementView = new AddNewAdvertisementView;[/js]
+
+Если вы используете однотипные события, то имеет смысл использовать области имен. Рекомендованным разделителем областей имен в Backbone является двоеточие.
+
+[js]var vent = {};
+_.extend(vent, Backbone.Events);
+
+vent.on('greet:respectfully', function(person) {
+  alert('Здравствуйте, ' + person);
+});
+
+vent.on('greet:cheerfully', function(person) {
+  alert('Привет, ' + person);
+});
+
+vent.trigger('greet:respectfully', 'Сова'); // "Здравствуйте, Сова"
+vent.trigger('greet:cheerfully', 'Пятачок'); // "Привет, Пятачок"
+vent.trigger('greet', 'Винни-Пух'); // ничего не произойдет[/js]
+
+Обратите внимание на сходство именований собственных событий с именованием событий <code>change:attribute</code>. Однако, здесь есть важное отличие. Событие <code>change</code> является встроенным, поэтому при срабатывании Backbone самостоятельно определяет, какой атрибут изменен, и если изменен тот, на изменение которого навешан обработчик, то он вызывается. В случае же с собственными событиями двоеточие является лишь конвенционным соглашением, и при срабатывании события ищется простое совпадение строк в названиях событий, которые сработали, и в тех, к появлению которых привязаны обработчики. Поэтому в последней строчке ничего не произойдет, так как мы не привязали обработчика, который должен срабатывать при наступлении события <code>greet</code>.
+
+Области имен полезны не только в названиях событий, но и в названиях всех создаваемых объектов в Backbone. В следующей главе мы посмотрим один из примеров использования областей имен.
+
+<h2>Организация кода: области имен</h2>
+
+Любой программист, обеспокоенный качеством своего кода, знает, насколько важно давать значимые имена переменным и функциям. В таком случае код говорит сам за себя, что позволяет обойтись без большого количества коментариев, вставляя их лишь там, где они действительно нужны. В нашем примере я старался следовать этому правилу. Однако, вы наверняка заметили, что эти имена становятся слишком похожи друг на друга. Во многих присутствует слово <code>collection</code> и <code>view</code>, в первую очередь потому что они являются коллекциями, видами или видами коллекций. С одной стороны, это хорошо, так как лучше следовать какой-то договоренности, чем брать имена переменных с потолка. Это вносит порядок и единообразие. С другой, все эти названия сливаются между собой. Быстро глянув на переменную, трудно, не осмыслив ее название, сказать модель это, вид или коллекция. Также трудно различать их между собой. С увеличением классов в приложении эта проблема будет только усиливаться. 
+
+Хорошим решением может стать использование областей имен. Для этого отлично подходят объекты как ассоциативные массивы. Здесь нет какого-то единственного верного решения, поэтому мы рассмотрим один пример, а вы можете использовать его или что-то подобное. Главное выберите какой-то один вариант и следуйте ему. Итак, вот заготовка.
+
+[js]var AdList = {
+  Models: {},
+  Views: {},
+  Collections: {}
+};[/js]
+
+Все модели будем записывать в свойства объекта <code>AdList.Models</code>, виды - в свойства <code>AdList.Views</code> и коллекции - в свойства <code>AdList.Collections</code>. Общее название приложения <code>AdList</code> конечно может быть каким угодно, лишь бы отражало его суть и было покороче, так как вам его часто придется писать. Названия моделей и видов моделей всегда в единственном числе, а названия коллекций и их видов наоборот всегда во множественном. Теперь у нас отпала необходимость хранить в имени переменной принадлежность ко внутренним классам Backbone, и даже беглого взгляда на переменную достаточно, чтобы понять, чем она является.
+
+Переделаем наш пример с использованием областей имен. Также пора избавиться от обилия глобальных переменных в нашем коде. Для учебного примера это вполне нормально, но раз уж уделили внимание организации кода, то и этот момент не стоит оставлять без внимания. Для этого обернем код самовызывающейся анонимной функцией.
+
+[js]<!DOCTYPE HTML>
+<html>
+  
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      .car-sold {
+        text-decoration: line-through;
+      }
+    </style>
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.5.2/underscore-min.js"></script>
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/backbone.js/1.1.0/backbone-min.js"></script>
+  </head>
+  
+  <body>
+    <!-- Здесь будут располагаться DOM элементы -->
+    <h1 id="header">Список ваших лотов</h1>
+    <form id="add-new-ad">
+      <input type="text" required placeholder="производитель" class="make-input">
+      <input type="text" required placeholder="модель" class="model-input">
+      <input type="text" required placeholder="год" class="year-input">
+      <input type="text" required placeholder="цена" class="price-input">
+      <input type="text" required placeholder="пробег" class="odometer-input">
+      <input type="submit" value="добавить лот">
+    </form>
+    
+    <script type="text/template" id="ad-template">
+      <input class="state-toggle" type="checkbox" <%= sold ? 'checked="checked"' : ''%>> Продается <strong><%= make %> <%= model %></strong> <%= year %> года выпуска с пробегом <%= odometer %> км. за <em><%= price %></em> иен <button class="edit-price">Изменить цену</button><button class="delete">Снять с торгов</button>
+    </script>
+    
+    <script>
+      // Здесь мы будем писать наш Javascript
+(function() {
+
+var AdList = {
+  Models: {},
+  Views: {},
+  Collections: {}
+};
+  
+var vent = {};
+_.extend(vent, Backbone.Events);
+
+AdList.Models.Advertisement = Backbone.Model.extend({
+  defaults: {
+    sold: false
+  },
+  validate: function(attrs) {
+    if (attrs.price <= 0) {
+      return 'Цена должна быть больше 0';
+    }
+    
+    if (isNaN(attrs.price)) {
+      return 'Цена должна быть числом';
+    }
+  },
+  toggleCarSoldState: function() {
+    this.get('sold') ? this.set('sold', false) : this.set('sold', true);
+  }
+});
+
+AdList.Views.Advertisement = Backbone.View.extend({
+  tagName: 'li',
+  initialize: function() {
+    this.model.on('change:price', this.render, this);
+    this.model.on('destroy', this.remove, this);
+    this.model.on('change:price', function() {
+      alert('Новая цена: ' + this.model.get('price'));
+    }, this);
+
+    this.model.on('invalid', function(model, error) {
+      alert(error);
+    }, this);
+  },
+  events: {
+    'click .state-toggle': 'toggleCarSoldState',
+    'click .edit-price': 'editPrice',
+    'click .delete': 'destroy'
+  },
+  template: _.template($('#ad-template').html()),
+  render: function() {
+    this.$el.html(this.template(this.model.toJSON()));
+    
+    return this;
+  },
+  toggleCarSoldState: function() {
+    this.model.toggleCarSoldState();
+    
+    this.model.get('sold') ? this.$el.addClass('car-sold') : this.$el.removeClass('car-sold');
+  },
+  editPrice: function() {
+    var newPrice = prompt('Введите пожалуйста новую цену', this.model.get('price'));
+    
+    if (newPrice === null) return;
+    
+    newPrice = $.trim(newPrice);
+    if (newPrice === '') newPrice = NaN;
+    
+    this.model.set('price', +newPrice, {validate: true});
+  },
+  destroy: function() {
+    this.model.destroy();
+  },
+  remove: function() {
+    this.$el.remove();
+  }
+});
+
+AdList.Collections.Advertisements = Backbone.Collection.extend({
+  model: AdList.Models.Advertisement,
+  initialize: function() {
+    vent.on('addNewModel', this.add, this);
+  }
+});
+      
+AdList.Views.Advertisements = Backbone.View.extend({
+  tagName: 'ol',
+  initialize: function() {
+    this.collection.on('add', this.addOne, this);
+  },
+  render: function() {
+    this.collection.each(this.addOne, this);
+    return this;
+  },
+  addOne: function(ad) {
+    var adView = new AdList.Views.Advertisement({ model: ad });
+    
+    this.$el.append(adView.render().el);
+  }
+});
+
+AdList.Views.AddNewAdvertisement = Backbone.View.extend({
+  el: '#add-new-ad',
+  events: {
+    'submit': 'submit'
+  },
+  submit: function(e) {
+    e.preventDefault();
+    
+    var ad = {
+      make: this.$el.find('.make-input').val(),
+      model: this.$el.find('.model-input').val(),
+      year: this.$el.find('.year-input').val(),
+      price: this.$el.find('.price-input').val(),
+      odometer: this.$el.find('.odometer-input').val(),
+    };
+    
+    vent.trigger('addNewModel', ad);
+  }
+});
+      
+var advertisementsCollection = new AdList.Collections.Advertisements([
+  {
+    make: 'Mazda',
+    model: 'Atenza',
+    year: 2007,
+    price: 1700000,
+    odometer: 70000
+  },
+  {
+    make: 'Тойота',
+    model: 'Королла',
+    year: 2010,
+    price: 2000000,
+    odometer: 40000
+  },
+  {
+    make: 'Ниссан',
+    model: 'Альмера',
+    year: 2010,
+    price: 1400000,
+    odometer: 60000
+  }
+]);
+
+var advertisementsCollectionView = new AdList.Views.Advertisements({
+  collection: advertisementsCollection
+});
+   
+var addNewAdvertisementView = new AdList.Views.AddNewAdvertisement;
+
+$('body').append(advertisementsCollectionView.render().el);
+
+})(); 
+    </script>
+  </body>
+
+</html>[/js]
+
+<h2>Роутеры (Routers) и История (History)</h2>
+
+
